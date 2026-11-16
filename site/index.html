@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Carte des cantons et circonscriptions</title>
+  <meta name="description" content="Carte interactive des cantons, circonscriptions législatives, communes et quartiers (IRIS) de France métropolitaine.">
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <aside id="panneau" aria-label="Commandes de la carte">
+    <header>
+      <h1>Carte électorale</h1>
+      <p class="sous-titre">Cantons, circonscriptions, communes et quartiers — France métropolitaine</p>
+    </header>
+
+    <div class="recherche">
+      <label for="q" class="visuellement-cache">Rechercher une commune, un canton ou une circonscription</label>
+      <input id="q" type="search" autocomplete="off" spellcheck="false"
+             placeholder="Commune, canton, « 31-01 »…" role="combobox"
+             aria-expanded="false" aria-controls="resultats" aria-autocomplete="list">
+      <ul id="resultats" role="listbox" hidden></ul>
+    </div>
+
+    <section id="fiche" aria-live="polite">
+      <p class="vide">Cliquez sur la carte ou cherchez une commune pour voir à quel canton et à quelle circonscription elle appartient.</p>
+    </section>
+
+    <section class="reglages">
+      <h2>Couleurs</h2>
+      <div class="segment" role="radiogroup" aria-label="Colorer la carte par">
+        <label><input type="radio" name="couleur" value="circos" checked><span>Circonscriptions</span></label>
+        <label><input type="radio" name="couleur" value="cantons"><span>Cantons</span></label>
+        <label><input type="radio" name="couleur" value="aucun"><span>Aucune</span></label>
+      </div>
+
+      <h2>Limites</h2>
+      <ul class="couches">
+        <li><label><input type="checkbox" data-couche="circos" checked><i class="trait circo"></i>Circonscriptions législatives</label></li>
+        <li><label><input type="checkbox" data-couche="cantons" checked><i class="trait canton"></i>Cantons</label></li>
+        <li><label><input type="checkbox" data-couche="communes" checked><i class="trait commune"></i>Communes <small>(zoom)</small></label></li>
+        <li><label><input type="checkbox" data-couche="iris" checked><i class="trait iris"></i>Quartiers IRIS <small>(villes)</small></label></li>
+        <li><label><input type="checkbox" data-couche="deps" checked><i class="trait dep"></i>Départements</label></li>
+      </ul>
+      <p id="etat" class="etat" role="status"></p>
+    </section>
+
+    <footer>
+      <details>
+        <summary>Sources et limites</summary>
+        <ul>
+          <li>Communes, cantons (2015), départements : IGN Admin Express 2018, via
+            <a href="https://github.com/gregoiredavid/france-geojson" target="_blank" rel="noopener">france-geojson</a>.</li>
+          <li>Circonscriptions législatives (découpage 2010, en vigueur) :
+            <a href="https://www.data.gouv.fr/datasets/contours-geographiques-des-circonscriptions-legislatives" target="_blank" rel="noopener">data.gouv.fr</a>,
+            reconstituées à partir des bureaux de vote.</li>
+          <li>Quartiers : <a href="https://www.data.gouv.fr/datasets/contours-iris-r-2" target="_blank" rel="noopener">Contours IRIS</a> (IGN / INSEE).</li>
+          <li>Fond de carte : <a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a>, © contributeurs OpenStreetMap.</li>
+        </ul>
+        <p>Les tracés sont simplifiés et proviennent de sources différentes : à quelques dizaines de mètres près, les limites ne se superposent pas exactement.
+          Les listes « cantons / circonscriptions d'une commune » sont déduites des quartiers IRIS : pour une adresse précise en limite, vérifiez auprès de la mairie.
+          Communes au découpage 2018 (fusions récentes non prises en compte). Outre-mer non couvert.</p>
+      </details>
+    </footer>
+  </aside>
+
+  <main id="carte" aria-label="Carte"></main>
+
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
