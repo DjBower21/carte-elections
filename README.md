@@ -22,10 +22,10 @@ site/                 ← ce qui est publié
   CNAME               ← domaine personnalisé (carte.cavalink-app.fr)
   data/
     index.json        ← recherche + rattachements commune → cantons / circonscriptions
-    departements.json, cantons.json, circonscriptions.json   (chargés au démarrage, ~6 Mo)
-    dep/<code>/communes.json, iris.json                      (chargés au zoom ≥ 8)
+    departements.json, cantons.json, circonscriptions.json   (vue d'ensemble, ~5 Mo)
+    dep/<code>/communes, iris, cantons, circos, departement  (détaillés, chargés au zoom ≥ 8)
 scripts/
-  telecharger_iris.py ← récupère les IRIS (Géoplateforme IGN, WFS)
+  telecharger_wfs.py  ← télécharge communes, cantons, IRIS (Géoplateforme IGN, WFS)
   build.py            ← sources/ → site/data/ (mapshaper)
 sources/              ← données brutes (non versionnées)
 ```
@@ -43,11 +43,21 @@ Puis ouvrir http://127.0.0.1:8765.
 ```bash
 npm install
 mkdir -p sources
-for f in cantons communes departements; do curl -sSfL -o sources/$f.geojson https://raw.githubusercontent.com/gregoiredavid/france-geojson/master/$f.geojson; done
+python -I scripts/telecharger_wfs.py "ADMINEXPRESS-COG-CARTO.LATEST:commune" "code_insee_du_departement<'97'" code_insee,nom_officiel,code_insee_du_departement,code_insee_du_canton,population sources/ae_communes.geojson
+python -I scripts/telecharger_wfs.py "ADMINEXPRESS-COG-CARTO.LATEST:canton" "code_insee_du_departement<'97'" code_insee,nom_officiel,code_insee_du_departement,composition_du_canton sources/ae_cantons.geojson
+python -I scripts/telecharger_wfs.py "STATISTICALUNITS.IRIS:contours_iris" "type_iris<>'Z'" code_iris,code_insee,nom_commune,nom_iris,type_iris sources/iris.geojson
 curl -sSfL -o sources/circonscriptions.geojson https://static.data.gouv.fr/resources/contours-geographiques-des-circonscriptions-legislatives/20240613-191506/circonscriptions-legislatives-p20.geojson
-python -I scripts/telecharger_iris.py sources/iris.geojson
 python -I scripts/build.py
 ```
+
+### Comment les limites suivent les communes
+
+`build.py` ne dessine pas les cantons et circonscriptions à partir de leurs propres contours : il les
+**reconstruit en assemblant les communes** (union communes × cantons × circonscriptions, puis fusion).
+Une commune entière appartient à un seul canton (champ IGN `code_insee_du_canton`) et à la circonscription
+qui la couvre ; seules les communes réellement partagées (grandes villes) gardent un découpage interne.
+Toutes les couches sont ensuite simplifiées ensemble : une limite commune à une commune, un canton,
+une circonscription et un département est un seul et même tracé.
 
 ## Mise en ligne sur `carte.cavalink-app.fr` (gratuit, via GitHub Pages)
 
@@ -65,14 +75,14 @@ Sans domaine, la carte reste accessible sur `https://<ton-pseudo>.github.io/cart
 
 | Couche | Source | Millésime |
 |---|---|---|
-| Communes, cantons, départements | IGN Admin Express via [france-geojson](https://github.com/gregoiredavid/france-geojson) | 2018 |
+| Communes, cantons, départements | IGN Admin Express COG Carto (Géoplateforme) — même source que [france-geojson](https://github.com/gregoiredavid/france-geojson), en version récente | 2026 |
 | Circonscriptions | [data.gouv.fr](https://www.data.gouv.fr/datasets/contours-geographiques-des-circonscriptions-legislatives) (agrégation des bureaux de vote) | 2024 |
 | Quartiers | [Contours IRIS](https://www.data.gouv.fr/datasets/contours-iris-r-2) IGN / INSEE | Géoplateforme, 2026 |
 | Fond de carte | [OpenFreeMap](https://openfreemap.org) / OpenStreetMap | — |
 
-- Les sources diffèrent et sont simplifiées : les limites ne se superposent pas au mètre près.
-- Rattachement commune → cantons / circonscriptions : déduit du point intérieur de chaque IRIS
-  (approximatif en limite de quartier).
-- Communes 2018 : les fusions de communes depuis 2018 ne sont pas prises en compte.
+- Cantons, circonscriptions et départements sont alignés exactement sur les communes. Seuls les
+  découpages *à l'intérieur* des grandes villes viennent des contours propres des cantons / circonscriptions
+  (les circonscriptions sont elles-mêmes reconstituées à partir des bureaux de vote, donc approximatives en ville).
+- Les quartiers IRIS sont une couche indépendante : leurs limites peuvent différer de quelques mètres.
 - Paris et la Métropole de Lyon n'ont pas de cantons (c'est normal).
-- Outre-mer non couvert (pas de cantons d'outre-mer dans france-geojson).
+- Outre-mer non couvert pour l'instant.

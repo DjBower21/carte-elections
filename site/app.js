@@ -92,12 +92,20 @@ const estPoint = ['==', ['geometry-type'], 'Point'];
 const couleurIndex = ['match', ['to-string', ['get', 'ci']], ...PALETTE.flatMap((c, i) => [String(i), c]), '#eeeeee'];
 
 const COUCHES = {
-  circos: ['circos-ligne', 'circos-etiquette'],
-  cantons: ['cantons-ligne', 'cantons-etiquette'],
+  circos: ['circos-ligne', 'circos-ligne-det', 'circos-etiquette'],
+  cantons: ['cantons-ligne', 'cantons-ligne-det', 'cantons-etiquette'],
   communes: ['communes-ligne', 'communes-etiquette'],
   iris: ['iris-ligne', 'iris-etiquette'],
-  deps: ['deps-ligne'],
+  deps: ['deps-ligne', 'deps-ligne-det'],
 };
+
+// Au-dessus de ZOOM_COMMUNES, cantons / circonscriptions / départements viennent des fichiers
+// détaillés du département (reconstruits à partir des communes : limites superposées).
+// En dessous, version nationale allégée.
+function ajouterPaire(def, avant) {
+  carte.addLayer({ ...def, source: def.source, maxzoom: ZOOM_COMMUNES }, avant);
+  carte.addLayer({ ...def, id: def.id + '-det', source: def.source + '-det', minzoom: Math.max(def.minzoom ?? 0, ZOOM_COMMUNES) }, avant);
+}
 
 function ajouterCouches() {
   // Le fond OpenFreeMap a ses propres noms de villes : on les masque, nos étiquettes les remplacent.
@@ -106,16 +114,17 @@ function ajouterCouches() {
   }
   const premierSymbole = carte.getStyle().layers.find((l) => l.type === 'symbol')?.id;
 
-  for (const s of ['deps', 'cantons', 'circos', 'communes', 'iris', 'selection']) {
+  for (const s of ['deps', 'cantons', 'circos', 'deps-det', 'cantons-det', 'circos-det', 'communes', 'iris', 'selection']) {
     carte.addSource(s, { type: 'geojson', data: VIDE, tolerance: 0.3 });
   }
 
   // Aplats de couleur (sous les routes et noms de rues du fond)
-  carte.addLayer({ id: 'circos-aplat', type: 'fill', source: 'circos', filter: estPoly,
-    paint: { 'fill-color': couleurIndex, 'fill-opacity': ['interpolate', ['linear'], ['zoom'], 5, 0.55, 12, 0.3] } }, premierSymbole);
-  carte.addLayer({ id: 'cantons-aplat', type: 'fill', source: 'cantons', filter: estPoly,
+  const opacite = ['interpolate', ['linear'], ['zoom'], 5, 0.55, 12, 0.3];
+  ajouterPaire({ id: 'circos-aplat', type: 'fill', source: 'circos', filter: estPoly,
+    paint: { 'fill-color': couleurIndex, 'fill-opacity': opacite } }, premierSymbole);
+  ajouterPaire({ id: 'cantons-aplat', type: 'fill', source: 'cantons', filter: estPoly,
     layout: { visibility: 'none' },
-    paint: { 'fill-color': couleurIndex, 'fill-opacity': ['interpolate', ['linear'], ['zoom'], 5, 0.55, 12, 0.3] } }, premierSymbole);
+    paint: { 'fill-color': couleurIndex, 'fill-opacity': opacite } }, premierSymbole);
   carte.addLayer({ id: 'selection-aplat', type: 'fill', source: 'selection',
     filter: ['==', ['get', 'role'], 'commune'],
     paint: { 'fill-color': '#6a2fb0', 'fill-opacity': 0.12 } });
@@ -125,12 +134,14 @@ function ajouterCouches() {
     paint: { 'line-color': '#1c7ed6', 'line-width': ['interpolate', ['linear'], ['zoom'], 10, 0.5, 15, 1.4], 'line-dasharray': [3, 2], 'line-opacity': 0.85 } });
   carte.addLayer({ id: 'communes-ligne', type: 'line', source: 'communes', filter: estPoly, minzoom: ZOOM_COMMUNES,
     paint: { 'line-color': '#5c636a', 'line-width': ['interpolate', ['linear'], ['zoom'], 8, 0.4, 14, 1.6], 'line-opacity': 0.9 } });
-  carte.addLayer({ id: 'cantons-ligne', type: 'line', source: 'cantons', filter: estPoly, minzoom: 6,
+  ajouterPaire({ id: 'cantons-ligne', type: 'line', source: 'cantons', filter: estPoly, minzoom: 6,
+    layout: { 'line-join': 'round' },
     paint: { 'line-color': '#e8590c', 'line-width': ['interpolate', ['linear'], ['zoom'], 6, 0.6, 10, 2, 14, 3.2] } });
-  carte.addLayer({ id: 'circos-ligne', type: 'line', source: 'circos', filter: estPoly,
+  ajouterPaire({ id: 'circos-ligne', type: 'line', source: 'circos', filter: estPoly,
     layout: { 'line-join': 'round' },
     paint: { 'line-color': '#7b2cbf', 'line-width': ['interpolate', ['linear'], ['zoom'], 5, 1, 9, 2.6, 14, 4.5], 'line-opacity': 0.9 } });
-  carte.addLayer({ id: 'deps-ligne', type: 'line', source: 'deps', filter: estPoly,
+  ajouterPaire({ id: 'deps-ligne', type: 'line', source: 'deps', filter: estPoly,
+    layout: { 'line-join': 'round' },
     paint: { 'line-color': '#212529', 'line-width': ['interpolate', ['linear'], ['zoom'], 5, 1, 10, 2.5] } });
 
   // Sélection
@@ -189,9 +200,13 @@ async function chargerNational() {
 function chargerDep(dep) {
   if (etat.parDep.has(dep)) return Promise.resolve(etat.parDep.get(dep));
   if (etat.enCours.has(dep)) return etat.enCours.get(dep);
-  const p = Promise.all([json(`data/dep/${dep}/communes.json`), json(`data/dep/${dep}/iris.json`).catch(() => VIDE)])
-    .then(([communes, iris]) => {
-      const d = { communes, iris, communesP: preparer(communes), irisP: preparer(iris) };
+  const fichier = (nom) => json(`data/dep/${dep}/${nom}.json`).catch(() => VIDE);
+  const p = Promise.all(['communes', 'iris', 'cantons', 'circos', 'departement'].map(fichier))
+    .then(([communes, iris, cantons, circos, departement]) => {
+      const d = {
+        communes, iris, cantons, circos, departement,
+        communesP: preparer(communes), irisP: preparer(iris), cantonsP: preparer(cantons), circosP: preparer(circos),
+      };
       etat.parDep.set(dep, d);
       etat.enCours.delete(dep);
       rafraichirSourcesLocales();
@@ -202,13 +217,24 @@ function chargerDep(dep) {
 }
 
 function rafraichirSourcesLocales() {
-  const com = [], iris = [];
+  const couches = { communes: [], iris: [], 'cantons-det': [], 'circos-det': [], 'deps-det': [] };
   for (const d of etat.parDep.values()) {
-    com.push(...d.communes.features);
-    iris.push(...d.iris.features);
+    couches.communes.push(...d.communes.features);
+    couches.iris.push(...d.iris.features);
+    couches['cantons-det'].push(...d.cantons.features);
+    couches['circos-det'].push(...d.circos.features);
+    couches['deps-det'].push(...d.departement.features);
   }
-  carte.getSource('communes').setData({ type: 'FeatureCollection', features: com });
-  carte.getSource('iris').setData({ type: 'FeatureCollection', features: iris });
+  for (const [source, features] of Object.entries(couches)) {
+    carte.getSource(source).setData({ type: 'FeatureCollection', features });
+  }
+}
+
+// Version détaillée (alignée sur les communes) d'un canton / d'une circonscription, si son département est chargé.
+function detaille(f, role) {
+  const d = f && etat.parDep.get(f.properties.dep);
+  if (!d) return f;
+  return (role === 'canton' ? d.cantonsP : d.circosP).find((x) => x.properties.code === f.properties.code) || f;
 }
 
 function depsVisibles() {
@@ -252,6 +278,7 @@ function avecRole(f, role) {
 }
 
 function puces(codes, type, nommer, max = 40) {
+  codes = [...codes].sort((a, b) => nommer(a).localeCompare(nommer(b), 'fr', { numeric: true }));
   const html = codes.slice(0, max).map((c) =>
     `<button type="button" class="puce ${type}" data-type="${type}" data-code="${echapper(c)}">${echapper(nommer(c))}</button>`).join('');
   const reste = codes.length > max ? `<span class="plus">+ ${codes.length - max} autres</span>` : '';
@@ -286,8 +313,8 @@ async function infosPoint(lngLat) {
   if (!dep) { selectionner([]); afficherFiche('<p class="vide">Hors de la France métropolitaine.</p>'); return; }
   const depCode = dep.properties.code;
   const donnees = await chargerDep(depCode);
-  const canton = trouver(etat.cantons, x, y);
-  const circo = trouver(etat.circos, x, y);
+  const canton = trouver(donnees.cantonsP, x, y) || detaille(trouver(etat.cantons, x, y), 'canton');
+  const circo = trouver(donnees.circosP, x, y) || detaille(trouver(etat.circos, x, y), 'circo');
   const commune = trouver(donnees.communesP, x, y);
   const iris = trouver(donnees.irisP, x, y);
   selectionner([avecRole(commune, 'commune'), avecRole(iris, 'iris'), avecRole(canton, 'canton'), avecRole(circo, 'circo')]);
@@ -323,7 +350,7 @@ async function allerCommune(code) {
   const p = f?.properties ?? {};
   selectionner([avecRole(f, 'commune')]);
   let html = `<p class="titre">${echapper(nom)}</p>
-    <p class="contexte">${echapper(nomDep(dep))} (${dep}) · code INSEE ${code}</p><dl>`;
+    <p class="contexte">${echapper(nomDep(dep))} (${dep}) · code INSEE ${code}${p.pop ? ` · ${p.pop.toLocaleString('fr-FR')} hab.` : ''}</p><dl>`;
   html += ligne('canton', cantons.length > 1 ? 'Cantons' : 'Canton',
     cantons.length ? (cantons.length === 1 ? echapper(nomCanton(cantons[0])) : `${cantons.length} cantons`)
       : `<span class="plus">${echapper(p.sanscanton ?? '—')}</span>`);
@@ -349,6 +376,8 @@ function ficheTerritoire(f, role) {
   const autres = [...new Set(coms.flatMap((c) => c[autre]))].sort();
   carte.fitBounds(f.bbox, { padding: 50, maxZoom: 12, duration: 900 });
   selectionner([avecRole(f, role)]);
+  // contour détaillé dès que le département est chargé
+  chargerDep(p.dep).then(() => selectionner([avecRole(detaille(f, role), role)])).catch(() => {});
   let html = `<p class="titre">${role === 'canton' ? 'Canton ' : ''}${echapper(p.nom)}</p>
     <p class="contexte">${echapper(nomDep(p.dep))} (${p.dep}) · ${coms.length} commune(s), entières ou en partie</p>`;
   if (autres.length) {
