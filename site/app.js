@@ -464,8 +464,13 @@ $('#q').addEventListener('blur', () => setTimeout(() => { resultats = []; affich
 /* ---------- Réglages ---------- */
 
 function appliquerCouleur(mode) {
-  carte.setLayoutProperty('circos-aplat', 'visibility', mode === 'circos' ? 'visible' : 'none');
-  carte.setLayoutProperty('cantons-aplat', 'visibility', mode === 'cantons' ? 'visible' : 'none');
+  // chaque aplat existe en deux couches : vue d'ensemble et détaillée (zoom ≥ ZOOM_COMMUNES)
+  for (const id of ['circos-aplat', 'circos-aplat-det']) {
+    carte.setLayoutProperty(id, 'visibility', mode === 'circos' ? 'visible' : 'none');
+  }
+  for (const id of ['cantons-aplat', 'cantons-aplat-det']) {
+    carte.setLayoutProperty(id, 'visibility', mode === 'cantons' ? 'visible' : 'none');
+  }
 }
 
 function appliquerCouche(nom, visible) {
