@@ -463,22 +463,37 @@ $('#q').addEventListener('blur', () => setTimeout(() => { resultats = []; affich
 
 /* ---------- Réglages ---------- */
 
-function appliquerCouleur(mode) {
-  // chaque aplat existe en deux couches : vue d'ensemble et détaillée (zoom ≥ ZOOM_COMMUNES)
-  for (const id of ['circos-aplat', 'circos-aplat-det']) {
-    carte.setLayoutProperty(id, 'visibility', mode === 'circos' ? 'visible' : 'none');
-  }
-  for (const id of ['cantons-aplat', 'cantons-aplat-det']) {
-    carte.setLayoutProperty(id, 'visibility', mode === 'cantons' ? 'visible' : 'none');
+// Un aplat s'affiche s'il est choisi dans « Couleurs » ET si sa couche est cochée dans « Limites ».
+function appliquerCouleur() {
+  const mode = document.querySelector('input[name="couleur"]:checked')?.value;
+  const coche = (nom) => document.querySelector(`input[data-couche="${nom}"]`)?.checked;
+  for (const nom of ['circos', 'cantons']) {
+    const visible = mode === nom && coche(nom);
+    // chaque aplat existe en deux couches : vue d'ensemble et détaillée (zoom ≥ ZOOM_COMMUNES)
+    for (const id of [`${nom}-aplat`, `${nom}-aplat-det`]) {
+      carte.setLayoutProperty(id, 'visibility', visible ? 'visible' : 'none');
+    }
   }
 }
+
+// Rôle de la sélection (contour épais après un clic) correspondant à chaque case de la légende.
+const ROLE_SELECTION = { circos: 'circo', cantons: 'canton', communes: 'commune', iris: 'iris' };
+const rolesMasques = new Set();
 
 function appliquerCouche(nom, visible) {
   for (const id of COUCHES[nom]) carte.setLayoutProperty(id, 'visibility', visible ? 'visible' : 'none');
+  appliquerCouleur();
+  // une couche décochée disparaît aussi de la sélection en cours
+  const role = ROLE_SELECTION[nom];
+  if (!role) return;
+  if (visible) rolesMasques.delete(role); else rolesMasques.add(role);
+  const visibles = ['!', ['in', ['get', 'role'], ['literal', [...rolesMasques]]]];
+  carte.setFilter('selection-ligne', visibles);
+  carte.setFilter('selection-aplat', ['all', ['==', ['get', 'role'], 'commune'], visibles]);
 }
 
 for (const r of document.querySelectorAll('input[name="couleur"]')) {
-  r.addEventListener('change', () => r.checked && appliquerCouleur(r.value));
+  r.addEventListener('change', appliquerCouleur);
 }
 for (const c of document.querySelectorAll('input[data-couche]')) {
   c.addEventListener('change', () => appliquerCouche(c.dataset.couche, c.checked));
